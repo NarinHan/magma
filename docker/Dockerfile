@@ -3,7 +3,12 @@ FROM ubuntu:18.04
 # TODO remove sudo for user "magma" to avoid unwanted priv escalation from
 # other attack vectors.
 
-RUN apt-get update && apt-get install -y sudo
+RUN apt-get update && \
+	    apt-get install -y sudo vim python3 python3-pip && \
+	    rm -rf /var/lib/apt/lists/*
+
+# Install gcovr
+RUN pip3 install --no-cache-dir gcovr
 
 ## Magma directory hierarchy
 # magma_root is relative to the docker-build's working directory
