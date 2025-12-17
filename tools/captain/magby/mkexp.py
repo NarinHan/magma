@@ -15,7 +15,9 @@ def source_env(script_path: str) -> dict:
         return {}
     script = os.fspath(script_path)
     if not os.path.exists(script):
-        return {}
+        print(f"[WARN] env script not found: {script}", file=sys.stderr)
+    return {}
+
     # Use bash -lc so login semantics & 'source' work; env -0 ensures null-separated pairs
     cmd = f"bash -lc 'set -a; source {shlex.quote(script)}; env -0'"
     out = subprocess.check_output(cmd, shell=True)
@@ -95,9 +97,9 @@ def write_check_sh(d):
     write_file(os.path.join(d, "check.sh"), "\n".join(lines) + "\n", 0o755)
 
 def write_run_sh(d, cmd):
-    # A single entrypoint used by tmux/screen or manual runs
     text = f"""#!/usr/bin/env bash
 set -euo pipefail
+
 cd "$(dirname "${{BASH_SOURCE[0]}}")"
 source ./env.sh
 ./check.sh
@@ -107,17 +109,32 @@ mkdir -p tmux_log
 : > tmux_log/stderr.log
 
 echo "[RUN] Starting: {cmd}"
-# Use 'script' if available to get a tty transcript; fall back to plain redirection
-if command -v script >/dev/null 2>&1; then
-    # '-f' flushes, '-q' quiet; transcript goes to logs/tty.typescript
-    script -q -f tmux_log/tty.typescript -c {shlex.quote(cmd)} 2> >(tee -a tmux_log/stderr.log >&2) | tee -a tmux_log/stdout.log
+
+# If running under tmux, do NOT use script (tmux already provides a tty)
+if [ -n "${{TMUX-}}" ]; then
+    bash -lc {shlex.quote(cmd)} \\
+        > >(tee -a tmux_log/stdout.log) \\
+        2> >(tee -a tmux_log/stderr.log >&2)
 else
-    bash -lc {shlex.quote(cmd)} 2> >(tee -a tmux_log/stderr.log >&2) | tee -a tmux_log/stdout.log
+    # Outside tmux: script is OK to capture a tty transcript
+    if command -v script >/dev/null 2>&1; then
+        script -q -f tmux_log/tty.typescript \\
+            bash -lc {shlex.quote(cmd)} \\
+            > >(tee -a tmux_log/stdout.log) \\
+            2> >(tee -a tmux_log/stderr.log >&2)
+    else
+        bash -lc {shlex.quote(cmd)} \\
+            > >(tee -a tmux_log/stdout.log) \\
+            2> >(tee -a tmux_log/stderr.log >&2)
+    fi
 fi
 
 echo "[RUN] Finished."
+
 # keep pane open if run in a terminal
-exec bash -i || true
+if [ -t 0 ] && [ -t 1 ]; then
+    exec bash -i
+fi
 """
     write_file(os.path.join(d, "run.sh"), text, 0o755)
 
