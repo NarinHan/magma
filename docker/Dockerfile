@@ -40,6 +40,11 @@ RUN mkdir -p ${SHARED} ${OUT} && \
 	chown magma:magma ${SHARED} ${OUT} && \
 	chmod 744 ${SHARED} ${OUT}
 
+ARG magcov_path=/tools/captain/magcov
+ENV MAGCOV $(MAGAM_R}/magcov
+USER mkdir -p magma/magcov && chown magma:magma ${MAGCOV}
+COPY --chown=magma:magma ${magma_root}/${magcov_path} ${MAGCOV}/
+
 ARG magma_path=magma
 ENV MAGMA 	${MAGMA_R}/${magma_path}
 USER root:root
