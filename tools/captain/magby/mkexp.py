@@ -15,8 +15,8 @@ def source_env(script_path: str) -> dict:
         return {}
     script = os.fspath(script_path)
     if not os.path.exists(script):
-        print(f"[WARN] env script not found: {script}", file=sys.stderr)
-    return {}
+        print(f"[WARN] env script not found: {script}", file=sys.stderr) 
+        return {}
 
     # Use bash -lc so login semantics & 'source' work; env -0 ensures null-separated pairs
     cmd = f"bash -lc 'set -a; source {shlex.quote(script)}; env -0'"
@@ -224,6 +224,13 @@ def main():
     # Load defaults then apply overrides
     env = source_env(args.env_script) if args.env_script else {}
     env.update(parse_overrides(args.overrides))
+
+    # If defaults are not set, it should not proceed
+    missing = [k for k in ("FUZZER","TARGET","PROGRAM") if not env_to_set.get(k)]
+    if missing:
+        raise SystemExit(f"[ERROR] Missing required env vars: {', '.join(missing)} "
+                f"(did you source {args.env_script} or pass --set KEY=VALUE?)")
+
 
     # Create unique workspace
     workdir = get_unique_directory(args.name, root)
