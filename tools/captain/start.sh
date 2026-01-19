@@ -68,7 +68,7 @@ else
     )
     container_id=$(cut -c-12 <<< $container_id)
     echo_time "Container for $FUZZER/$TARGET/$PROGRAM started in $container_id"
-    docker logs -f "$container_id" &
-    exit_code=$(docker wait $container_id)
-    exit $exit_code
+    echo "[INFO] Container is running: $container_id"
+    echo "[INFO] Opening interactive shell..."
+    docker exec -it "$container_id" bash -i
 fi
