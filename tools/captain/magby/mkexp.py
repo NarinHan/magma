@@ -19,15 +19,18 @@ def source_env(script_path: str) -> dict:
         return {}
 
     # Use bash -lc so login semantics & 'source' work; env -0 ensures null-separated pairs
-    cmd = f"bash -lc 'set -a; source {shlex.quote(script)}; env -0'"
-    out = subprocess.check_output(cmd, shell=True)
+    out = subprocess.check_output(
+            ["bash", "-lc", f"set -a; source {shlex.quote(script)}; env -0"],
+            stderr=subprocess.STDOUT
+    )
     env = {}
     for item in out.split(b"\0"):
         if not item:
             continue
         k, _, v = item.partition(b"=")
-        # decode ignoring undecodable bytes rather than failing
-        env[k.decode(errors='ignore')] = v.decode(errors='ignore')
+        key = k.decode(errors="ignore")
+        val = v.decode(errors="ignore").rstrip("\r") # strip CR if present
+        env[key] = val
     return env
 
 def parse_overrides(pairs):
@@ -104,29 +107,22 @@ cd "$(dirname "${{BASH_SOURCE[0]}}")"
 source ./env.sh
 ./check.sh
 
-mkdir -p tmux_log 
-: > tmux_log/stdout.log
-: > tmux_log/stderr.log
+: > tmux.log
 
 echo "[RUN] Starting: {cmd}"
 
 # If running under tmux, do NOT use script (tmux already provides a tty)
 if [ -n "${{TMUX-}}" ]; then
-    bash -lc {shlex.quote(cmd)} \\
-        > >(tee -a tmux_log/stdout.log) \\
-        2> >(tee -a tmux_log/stderr.log >&2)
+    # Log only the first N lines to avoid huge log files
+    N_LINES=1000
+    tmux pipe-pane -o -t "${{TMUX_PANE}}" "head -n $N_LINES >> tmux.log"
+
+    bash -lc {shlex.quote(cmd)}
+
+    tmux pipe-pane -t "${{TMUX_PANE}}" || true
 else
     # Outside tmux: script is OK to capture a tty transcript
-    if command -v script >/dev/null 2>&1; then
-        script -q -f tmux_log/tty.typescript \\
-            bash -lc {shlex.quote(cmd)} \\
-            > >(tee -a tmux_log/stdout.log) \\
-            2> >(tee -a tmux_log/stderr.log >&2)
-    else
-        bash -lc {shlex.quote(cmd)} \\
-            > >(tee -a tmux_log/stdout.log) \\
-            2> >(tee -a tmux_log/stderr.log >&2)
-    fi
+    bash -lc {shlex.quote(cmd)}
 fi
 
 echo "[RUN] Finished."
@@ -172,7 +168,7 @@ def launch_tmux(session, workdir):
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             # session exists → try next suffix
             suffix += 1
-            final = f"{base}-{suffix}"
+            final = f"{base}-{suffix:03d}"
         except subprocess.CalledProcessError:
             # has-session returned non-zero → session does not exist
             break
@@ -225,13 +221,6 @@ def main():
     env = source_env(args.env_script) if args.env_script else {}
     env.update(parse_overrides(args.overrides))
 
-    # If defaults are not set, it should not proceed
-    missing = [k for k in ("FUZZER","TARGET","PROGRAM") if not env_to_set.get(k)]
-    if missing:
-        raise SystemExit(f"[ERROR] Missing required env vars: {', '.join(missing)} "
-                f"(did you source {args.env_script} or pass --set KEY=VALUE?)")
-
-
     # Create unique workspace
     workdir = get_unique_directory(args.name, root)
     os.makedirs(workdir, exist_ok=False)
@@ -242,6 +231,12 @@ def main():
 
     # Persist env in controlled way
     env_to_set = get_env_allowed(env)
+
+    # If environment variables are not set, it should not proceed
+    missing = [k for k in ("FUZZER","TARGET","PROGRAM") if not env_to_set.get(k)]
+    if missing:
+        raise SystemExit(f"[ERROR] Missing required env vars: {', '.join(missing)} "
+                f"(did you source {args.env_script} or pass --set KEY=VALUE?)")
 
     # Write helpers & metadata
     write_env_files(workdir, env_to_set)

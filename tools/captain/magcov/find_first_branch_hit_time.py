@@ -26,14 +26,11 @@ Sorting modes:
   - --sort-by-time: primarily by first_time_sec, then by branch key
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json
 import os
 import re
-from dataclasses import dataclass
 from glob import glob
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -41,18 +38,39 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 BranchKey = Tuple[str, int, int]  # (file, line, branch_idx)
 
 
-@dataclass(frozen=True)
-class SeedRecord:
-    json_path: str
-    seed: str
-    mtime_unix: int
-    seed_dir_base: str  # basename of the per-seed directory, e.g. "0538-c52e..."
+class SeedRecord(object):
+    """
+    Python 3.6 replacement for:
+        @dataclass(frozen=True)
+        class SeedRecord: ...
+    """
+    __slots__ = ("json_path", "seed", "mtime_unix", "seed_dir_base")
+
+    def __init__(self, json_path, seed, mtime_unix, seed_dir_base):
+        self.json_path = json_path
+        self.seed = seed
+        self.mtime_unix = mtime_unix
+        self.seed_dir_base = seed_dir_base
+
+    def __repr__(self):
+        return (
+            "SeedRecord(json_path={!r}, seed={!r}, mtime_unix={!r}, seed_dir_base={!r})"
+            .format(self.json_path, self.seed, self.mtime_unix, self.seed_dir_base)
+        )
+
+    # Make it effectively "frozen" (immutable) like dataclass(frozen=True)
+    def __setattr__(self, name, value):
+        # allow setting only during __init__ (when attribute doesn't exist yet)
+        if name in self.__slots__ and hasattr(self, name):
+            raise AttributeError("SeedRecord is immutable")
+        object.__setattr__(self, name, value)
 
 
 _INDEX_RE = re.compile(r"^(\d+)[-_].*$")  # "0538-c52e..." or "0538_c52e..." etc.
 
 
-def parse_seed_index(seed_dir_base: str) -> Optional[int]:
+def parse_seed_index(seed_dir_base):
+    # type: (str) -> Optional[int]
     m = _INDEX_RE.match(seed_dir_base)
     if not m:
         return None
@@ -62,8 +80,9 @@ def parse_seed_index(seed_dir_base: str) -> Optional[int]:
         return None
 
 
-def read_initial_seeds_list(path: str) -> Set[str]:
-    seeds: Set[str] = set()
+def read_initial_seeds_list(path):
+    # type: (str) -> Set[str]
+    seeds = set()  # type: Set[str]
     with open(path, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
@@ -73,13 +92,14 @@ def read_initial_seeds_list(path: str) -> Set[str]:
     return seeds
 
 
-def discover_branch_json_files(root: str) -> List[str]:
+def discover_branch_json_files(root):
+    # type: (str) -> List[str]
     patterns = [
         os.path.join(root, "**", "*.branches.json"),
         os.path.join(root, "**", "*-branches.json"),
         os.path.join(root, "**", "*branches*.json"),
     ]
-    files: Set[str] = set()
+    files = set()  # type: Set[str]
     for p in patterns:
         for fp in glob(p, recursive=True):
             if os.path.isfile(fp):
@@ -87,11 +107,13 @@ def discover_branch_json_files(root: str) -> List[str]:
     return sorted(files)
 
 
-def seed_dir_basename(json_path: str) -> str:
+def seed_dir_basename(json_path):
+    # type: (str) -> str
     return os.path.basename(os.path.dirname(json_path))
 
 
-def load_seed_record(json_path: str) -> Optional[SeedRecord]:
+def load_seed_record(json_path):
+    # type: (str) -> Optional[SeedRecord]
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             obj = json.load(f)
@@ -109,12 +131,8 @@ def load_seed_record(json_path: str) -> Optional[SeedRecord]:
         return None
 
 
-def compute_normalized_times(
-    records: List[SeedRecord],
-    initial_seeds: Set[str],
-    stitch_threshold_seconds: int,
-    cap_seconds: int,
-) -> Dict[str, int]:
+def compute_normalized_times(records, initial_seeds, stitch_threshold_seconds, cap_seconds):
+    # type: (List[SeedRecord], Set[str], int, int) -> Dict[str, int]
     if not records:
         return {}
 
@@ -123,7 +141,7 @@ def compute_normalized_times(
     prev_mtime = records_sorted[0].mtime_unix
     elapsed = 0
 
-    seed_to_time: Dict[str, int] = {}
+    seed_to_time = {}  # type: Dict[str, int]
     seed_to_time[records_sorted[0].seed] = 0
 
     for rec in records_sorted[1:]:
@@ -148,7 +166,8 @@ def compute_normalized_times(
     return seed_to_time
 
 
-def iter_covered_branches(json_path: str) -> Iterable[BranchKey]:
+def iter_covered_branches(json_path):
+    # type: (str) -> Iterable[BranchKey]
     with open(json_path, "r", encoding="utf-8") as f:
         obj = json.load(f)
 
@@ -167,7 +186,8 @@ def iter_covered_branches(json_path: str) -> Iterable[BranchKey]:
             yield (item[0], item[1], item[2])
 
 
-def better_seed_choice(current_best: Optional[SeedRecord], challenger: SeedRecord) -> SeedRecord:
+def better_seed_choice(current_best, challenger):
+    # type: (Optional[SeedRecord], SeedRecord) -> SeedRecord
     """
     Choose ONE representative seed for ties at the same first_time.
 
@@ -197,12 +217,10 @@ def better_seed_choice(current_best: Optional[SeedRecord], challenger: SeedRecor
     return challenger if challenger.seed < current_best.seed else current_best
 
 
-def find_first_covered_time_and_one_seed(
-    records: List[SeedRecord],
-    seed_to_time: Dict[str, int],
-) -> Tuple[Dict[BranchKey, int], Dict[BranchKey, SeedRecord]]:
-    first_time: Dict[BranchKey, int] = {}
-    first_seed_rec: Dict[BranchKey, SeedRecord] = {}
+def find_first_covered_time_and_one_seed(records, seed_to_time):
+    # type: (List[SeedRecord], Dict[str, int]) -> Tuple[Dict[BranchKey, int], Dict[BranchKey, SeedRecord]]
+    first_time = {}      # type: Dict[BranchKey, int]
+    first_seed_rec = {}  # type: Dict[BranchKey, SeedRecord]
 
     for rec in records:
         t = seed_to_time.get(rec.seed)
@@ -226,12 +244,8 @@ def find_first_covered_time_and_one_seed(
     return first_time, first_seed_rec
 
 
-def write_csv(
-    out_path: str,
-    first_time: Dict[BranchKey, int],
-    first_seed_rec: Dict[BranchKey, SeedRecord],
-    sort_by_time: bool,
-) -> None:
+def write_csv(out_path, first_time, first_seed_rec, sort_by_time):
+    # type: (str, Dict[BranchKey, int], Dict[BranchKey, SeedRecord], bool) -> None
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
 
     items = list(first_time.items())
@@ -250,7 +264,8 @@ def write_csv(
             w.writerow([file, line, idx, t, "" if sidx is None else sidx, rec.seed])
 
 
-def main() -> int:
+def main():
+    # type: () -> int
     ap = argparse.ArgumentParser(
         description="Find first covered time (normalized seconds within 24h) for each branch, including responsible seed + seed index."
     )
@@ -293,9 +308,9 @@ def main() -> int:
 
     json_files = discover_branch_json_files(args.json_root)
     if not json_files:
-        raise SystemExit(f"No branch JSON files found under: {args.json_root}")
+        raise SystemExit("No branch JSON files found under: {}".format(args.json_root))
 
-    records: List[SeedRecord] = []
+    records = []  # type: List[SeedRecord]
     skipped = 0
     for fp in json_files:
         rec = load_seed_record(fp)
@@ -323,11 +338,11 @@ def main() -> int:
         sort_by_time=args.sort_by_time,
     )
 
-    print(f"Parsed JSON files: {len(records)} (skipped invalid: {skipped})")
-    print(f"Initial seeds forced to 0s: {len(initial_seeds)}")
-    print(f"Branches with first-covered time: {len(first_time)}")
-    print(f"Sort mode: {'time' if args.sort_by_time else 'branch'}")
-    print(f"Wrote: {args.out_csv}")
+    print("Parsed JSON files: {} (skipped invalid: {})".format(len(records), skipped))
+    print("Initial seeds forced to 0s: {}".format(len(initial_seeds)))
+    print("Branches with first-covered time: {}".format(len(first_time)))
+    print("Sort mode: {}".format("time" if args.sort_by_time else "branch"))
+    print("Wrote: {}".format(args.out_csv))
     return 0
 
 

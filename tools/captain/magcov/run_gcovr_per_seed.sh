@@ -12,7 +12,7 @@ GCOVR_BIN="gcovr"                                           # ensure gcovr==5.0 
 # ===================================
 
 mkdir -p "$OUTROOT"
-LOG="$OUTROOT/run.log"
+LOG="$OUTROOT/run_gcovr_per_seed.log"
 : > "$LOG"
 
 # Helper: delete all .gcda under ROOT
@@ -102,6 +102,43 @@ for seed in "${SEEDS[@]}"; do
 JSON
   fi
 
+  # 3.5) Add seed + mtime metadata into the gcovr JSON itself
+  python3 - "$gcovr_json" "$seed" "$MTIME_UNIX" "$MTIME_ISO" "$exitcode" "$crashed" <<'PY'
+import json, sys, os
+
+gcovr_path, seed_path, mtime_unix, mtime_iso, exitcode, crashed = sys.argv[1:]
+mtime_unix = int(mtime_unix)
+exitcode = int(exitcode)
+crashed = int(crashed)
+
+# Load whatever is in gcovr_path (real gcovr output or stub),
+# then inject metadata fields at top-level.
+try:
+    with open(gcovr_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    # If it's corrupted for any reason, preserve something usable
+    data = {
+        "gcovr_version": "unreadable",
+        "files": [],
+        "metrics": {
+            "line": {"covered": 0, "total": 0},
+            "branch": {"covered": 0, "total": 0},
+        },
+    }
+
+data["seed"] = os.path.basename(seed_path)
+data["mtime_unix"] = mtime_unix
+data["mtime_iso"] = mtime_iso
+
+# Optional but often handy for debugging / filtering:
+data["exit_code"] = exitcode
+data["crashed"] = crashed
+
+with open(gcovr_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PY
+
   # 4) Extract covered branches into a compact JSON
   #    We produce: { "seed": "...", "mtime_unix": ..., "mtime_iso": "...",
   #                  "exit_code": N, "crashed": 0/1,
@@ -145,10 +182,6 @@ out = {
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(out, f, indent=2, ensure_ascii=False)
 PY
-
-  # 5) Write a simple per-seed line log (parsed later by the Python summarizer)
-  echo -e "${idx}\t${base}\t${MTIME_UNIX}\t${exitcode}\t${crashed}" >> "$OUTROOT/per-seed.raw.tsv"
 done
 
 echo "Done. Per-seed outputs in: $OUTROOT"
-
