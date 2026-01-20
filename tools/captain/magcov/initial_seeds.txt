@@ -1,0 +1,5 @@
+not_kitty.png
+not_kitty_alpha.png
+not_kitty_gamma.png
+not_kitty_icc.png
+
