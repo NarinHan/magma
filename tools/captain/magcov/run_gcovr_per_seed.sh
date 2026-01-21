@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ========== USER SETTINGS ==========
-FUZZBIN="/magma_out/libpng_read_fuzzer"                     # your libFuzzer-built binary
-SEED_DIR="/magma/targets/libpng/corpus/libpng_read_fuzzer"  # directory containing seed files
+FUZZBIN="$OUT/$PROGRAM"                     # your libFuzzer-built binary
+SEED_DIR="/magma/targets/$TARGET/corpus/$PROGRAM"  # directory containing seed files
 OUTROOT="/magma/outdir_per_seed"                            # root output directory
-ROOT="/magma/targets/libpng"                                # project root for gcovr -r (your compilation root)
+ROOT="/magma/targets/$TARGET"                                # project root for gcovr -r (your compilation root)
 TIMEOUT_SEC=3                                               # per-seed wall timeout for the target
 EXTRA_FUZZ_ARGS=()                                          # e.g. ("-detect_leaks=0" "-rss_limit_mb=0")
 GCOVR_BIN="gcovr"                                           # ensure gcovr==5.0 is in PATH

@@ -21,6 +21,9 @@ run_step() {
   echo
 }
 
+# Step 0: Prepare initial seeds list
+run_step "write_initial_seeds_list" /magma/magcov/write_initial_seeds_list.sh
+
 # Step 1: Run the per-seed gcovr collection
 run_step "run_gcovr_per_seed" /magma/magcov/run_gcovr_per_seed.sh
 
