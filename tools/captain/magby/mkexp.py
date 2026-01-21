@@ -10,6 +10,31 @@ KEYS_ALLOWED = ("FUZZER", "TARGET", "PROGRAM", "SHARED", "POLL", "TIMEOUT")
 ROOT = os.path.dirname(os.path.realpath(__file__))
 EXPERIMENTS_DIR = os.path.realpath(os.path.join(ROOT, "..", "experiments"))
 
+def run_copy_magcov_if_exists():
+    """
+    Run copy_magcov_dir.sh if the magcov directory exists.
+    This runs unconditionally (default behavior), but safely.
+    """
+    script = os.path.join(ROOT, "copy_magcov_dir.sh")
+    magcov_dir = os.path.join(ROOT, "magcov")
+
+    if not os.path.isdir(magcov_dir):
+        print("[INFO] magcov directory not found; skipping copy.")
+        return
+
+    if not os.path.isfile(script):
+        raise SystemExit(f"[ERROR] copy script not found: {script}")
+
+    print("[INFO] magcov directory found; copying...")
+    try:
+        subprocess.check_call(
+            ["bash", script],
+            cwd=ROOT
+        )
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(f"[ERROR] copy_magcov_dir.sh failed with exit code {e.returncode}")
+
+
 def source_env(script_path: str) -> dict:
     if not script_path:
         return {}
@@ -212,6 +237,9 @@ def main():
     ap.add_argument("--screen", action="store_true", help="launch in GNU screen (detached)")
     ap.add_argument("--session", default=None, help="tmux/screen session name (default: workspace basename)")
     args = ap.parse_args()
+    
+    # Copy magcov directory
+    run_copy_magcov_if_exists()
 
     # Prepare experiment root
     root = os.path.realpath(getattr(args, "root", EXPERIMENTS_DIR))
