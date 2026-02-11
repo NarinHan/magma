@@ -3,12 +3,12 @@ set -euo pipefail
 
 # ========== USER SETTINGS ==========
 FUZZBIN="$OUT/$PROGRAM"                     # your libFuzzer-built binary
-SEED_DIR="/magma/targets/$TARGET/corpus/$PROGRAM"  # directory containing seed files
-OUTROOT="/magma/outdir_per_seed"                            # root output directory
-ROOT="/magma/targets/$TARGET"                                # project root for gcovr -r (your compilation root)
-TIMEOUT_SEC=3                                               # per-seed wall timeout for the target
-EXTRA_FUZZ_ARGS=()                                          # e.g. ("-detect_leaks=0" "-rss_limit_mb=0")
-GCOVR_BIN="gcovr"                                           # ensure gcovr==5.0 is in PATH
+SEED_DIR="$TARGET/corpus/$PROGRAM"          # directory containing seed files
+OUTROOT="/magma/outdir_per_seed"            # root output directory
+ROOT="$TARGET"                              # project root for gcovr -r (your compilation root)
+TIMEOUT_SEC=3                               # per-seed wall timeout for the target
+EXTRA_FUZZ_ARGS=()                          # e.g. ("-detect_leaks=0" "-rss_limit_mb=0")
+GCOVR_BIN="gcovr"                           # ensure gcovr==5.0 is in PATH
 # ===================================
 
 mkdir -p "$OUTROOT"
@@ -127,16 +127,20 @@ except Exception:
         },
     }
 
-data["seed"] = os.path.basename(seed_path)
-data["mtime_unix"] = mtime_unix
-data["mtime_iso"] = mtime_iso
+ordered = {
+	"seed": os.path.basename(seed_path),
+	"mtime_unix": mtime_unix,
+	"mtime_iso": mtime_iso,
+	"exit_code": exitcode,
+	"crashed": crashed,
+}
 
-# Optional but often handy for debugging / filtering:
-data["exit_code"] = exitcode
-data["crashed"] = crashed
+for k, v in data.items():
+	if k not in ordered:
+		ordered[k] = v
 
 with open(gcovr_path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
+    json.dump(ordered, f, indent=2, ensure_ascii=False)
 PY
 
   # 4) Extract covered branches into a compact JSON
